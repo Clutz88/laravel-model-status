@@ -4,6 +4,7 @@ use Illuminate\Database\Eloquent\Relations\Relation;
 use Spatie\ModelStatus\Exceptions\InvalidStatus;
 use Spatie\ModelStatus\Tests\Models\AlternativeStatusModel;
 use Spatie\ModelStatus\Tests\Models\CustomModelKeyStatusModel;
+use Spatie\ModelStatus\Tests\Models\TestEnum;
 use Spatie\ModelStatus\Tests\Models\TestModel;
 use Spatie\ModelStatus\Tests\Models\ValidationTestModel;
 
@@ -13,15 +14,22 @@ beforeEach(function () {
     ]);
 });
 
-it('can get and set a status', function () {
-    $this->testModel->setStatus('pending', 'waiting on action');
+it('can get and set a status', function ($status) {
+    $this->testModel->setStatus($status, 'waiting on action');
 
     $name = $this->testModel->statuses->first()->name;
     $reason = $this->testModel->statuses->first()->reason;
 
     expect($name)->toEqual('pending')
         ->and($reason)->toEqual('waiting on action');
-});
+})->with([
+    'string status' =>[
+        'pending',
+    ],
+    'string backed enum' => [
+        TestEnum::pending
+    ]
+]);
 
 test('a reason can be set')
     ->tap(fn () => $this->testModel->setStatus('pending', 'waiting on action'))
@@ -36,31 +44,41 @@ it('throws an exception when setting an invalid status', function () {
     $validationUser->setStatus('InvalidStatus');
 })->throws(InvalidStatus::class);
 
-it('can force set an invalid status', function () {
+it('can force set an invalid status', function ($status) {
     $validationUser = ValidationTestModel::create([
         'name' => 'name',
     ]);
 
-    $validationUser->forceSetStatus('InvalidStatus');
+    $validationUser->forceSetStatus($status);
 
     $name = $validationUser->statuses->first()->name;
 
     expect($name)->toEqual('InvalidStatus');
-});
+})->with([
+    'string status' =>[
+        'InvalidStatus',
+    ],
+    'string backed enum' => [
+        TestEnum::invalidStatus
+    ]
+]);
 
-it('can find the last status by name', function () {
+it('can find the last status by name', function ($statusA, $statusB, $statusC) {
     $this->testModel
-        ->setStatus('status a', 'reason 1')
-        ->setStatus('status b', 'reason 2')
-        ->setStatus('status a', 'reason 3');
+        ->setStatus($statusA, 'reason 1')
+        ->setStatus($statusB, 'reason 2')
+        ->setStatus($statusC, 'reason 3');
 
     expect(
-        $this->testModel->latestStatus('status a')->reason
+        $this->testModel->latestStatus($statusC)->reason
     )->toEqual('reason 3')
         ->and(
-            $this->testModel->latestStatus('status b')->reason
+            $this->testModel->latestStatus($statusB)->reason
         )->toEqual('reason 2');
-});
+})->with([
+    'string statuses' => ['status a', 'status b', 'status c'],
+    'backed enum statuses' => [TestEnum::state_a, TestEnum::state_b, TestEnum::state_c]
+]);
 
 it('can handle getting a status when there are none set')
     ->expect(fn () => $this->testModel->status())
@@ -100,55 +118,83 @@ it('can return the latest status', function (
 });
 
 it('will return `true` if specific status is found')
-    ->tap(fn () => $this->testModel->setStatus('status 1'))
-    ->expect(fn () => $this->testModel->hasEverHadStatus('status 1'))
-    ->toBeTrue();
+    ->tap(fn ($status) => $this->testModel->setStatus($status))
+    ->expect(fn ($status) => $this->testModel->hasEverHadStatus($status))
+    ->toBeTrue()
+    ->with([
+        'string status' => ['status 1'],
+        'enum status' => [TestEnum::pending]
+    ]);
 
 it('will return `false` if specific status is not found')
-    ->tap(fn () => $this->testModel->setStatus('status 1'))
-    ->expect(fn () => $this->testModel->hasEverHadStatus('status 2'))
-    ->toBeFalse();
+    ->tap(fn ($status) => $this->testModel->setStatus($status))
+    ->expect(fn ($status, $wrongStatus) => $this->testModel->hasEverHadStatus($wrongStatus))
+    ->toBeFalse()
+    ->with([
+        'string status' => ['status 1', 'status 2'],
+        'enum status' => [TestEnum::pending, TestEnum::invalidStatus]
+    ]);
 
 it('will return `false` if specific status is found')
-    ->tap(fn () => $this->testModel->setStatus('status 1'))
-    ->expect(fn () => $this->testModel->hasNeverHadStatus('status 1'))
-    ->toBeFalse();
+    ->tap(fn ($status) => $this->testModel->setStatus($status))
+    ->expect(fn ($status) => $this->testModel->hasNeverHadStatus($status))
+    ->toBeFalse()
+    ->with([
+        'string status' => ['status 1'],
+        'enum status' => [TestEnum::pending]
+    ]);
 
 it('will return `true` if specific status is not found')
-    ->tap(fn () => $this->testModel->setStatus('status 1'))
-    ->expect(fn () => $this->testModel->hasNeverHadStatus('status 2'))
-    ->toBeTrue();
+    ->tap(fn ($status) => $this->testModel->setStatus($status))
+    ->expect(fn ($status, $wrongStatus) => $this->testModel->hasNeverHadStatus($wrongStatus))
+    ->toBeTrue()
+    ->with([
+        'string status' => ['status 1', 'status 2'],
+        'enum status' => [TestEnum::pending, TestEnum::invalidStatus]
+    ]);
 
-it('can delete a specific status', function () {
-    $this->testModel->setStatus('status to delete');
+it('can delete a specific status', function ($status) {
+    $this->testModel->setStatus($status);
 
     expect($this->testModel->statuses()->count())->toEqual(1);
 
-    $this->testModel->deleteStatus('status to delete');
+    $this->testModel->deleteStatus($status);
 
     expect($this->testModel->statuses()->count())->toEqual(0);
-});
+})
+    ->with([
+        'string status' => ['pending'],
+        'enum status' => [TestEnum::pending]
+    ]);
 
-it('can delete a multiple statuses at once', function () {
-    $this->testModel->setStatus('status to delete 1')
-        ->setStatus('status to delete 2');
+it('can delete a multiple statuses at once', function ($stateA, $stateB) {
+    $this->testModel->setStatus($stateA)
+        ->setStatus($stateB);
 
     expect($this->testModel->statuses()->count())->toEqual(2);
 
-    $this->testModel->deleteStatus('status to delete 1', 'status to delete 2');
+    $this->testModel->deleteStatus($stateA, $stateB);
 
     expect($this->testModel->statuses()->count())->toEqual(0);
-});
+})
+    ->with([
+        'string status' => ['state a', 'state b'],
+        'enum status' => [TestEnum::state_a, TestEnum::state_b]
+    ]);
 
-it('will keep status when invalid delete status is given', function () {
-    $this->testModel->setStatus('status to delete');
+it('will keep status when invalid delete status is given', function ($status) {
+    $this->testModel->setStatus($status);
 
     expect($this->testModel->statuses()->count())->toEqual(1);
 
     $this->testModel->deleteStatus();
 
     expect($this->testModel->statuses()->count())->toEqual(1);
-});
+})
+    ->with([
+        'string status' => ['pending'],
+        'enum status' => [TestEnum::pending]
+    ]);
 
 it('can handle a different status model')
     ->tap(

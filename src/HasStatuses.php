@@ -2,6 +2,7 @@
 
 namespace Spatie\ModelStatus;
 
+use BackedEnum;
 use \Illuminate\Support\Collection;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
@@ -24,8 +25,12 @@ trait HasStatuses
         return $this->latestStatus();
     }
 
-    public function setStatus(string $name, ?string $reason = null): self
+    public function setStatus(string|BackedEnum $name, ?string $reason = null): self
     {
+        if ($name instanceof BackedEnum) {
+            $name = $name->value;
+        }
+
         if (! $this->isValidStatus($name, $reason)) {
             throw InvalidStatus::create($name);
         }
@@ -151,8 +156,12 @@ trait HasStatuses
             ->orWhereDoesntHave('statuses');
     }
 
-    public function forceSetStatus(string $name, ?string $reason = null): self
+    public function forceSetStatus(string|BackedEnum $name, ?string $reason = null): self
     {
+        if ($name instanceof BackedEnum) {
+            $name = $name->value;
+        }
+
         $oldStatus = $this->latestStatus();
 
         $newStatus = $this->statuses()->create([
